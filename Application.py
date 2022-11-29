@@ -1,6 +1,7 @@
 import csv
 import time
 from threading import Thread
+from typing import Tuple
 
 import numpy as np
 import serial
@@ -13,31 +14,34 @@ write_on = mp.Value("i", 0)
 
 class Application:
     def __init__(self, port: str, rows: int, cols: int):
+        self.port = port
         self.p_process = None
         self.d_process = None
         self.serial = None
-        self.serial_port_init(port)
         self.sensor_size = (rows, cols)
         self.channels = rows * cols
         self.fig, self.ax = plt.subplots(1, 1)
         self.average = None
         self.spectrum = None
-        self.rawcount = None
+        self.raw_count = []
         self.file = None
         self.obs = 0
 
-        self.plot_on = mp.Value("i", False)
+        self.write_on = mp.Value("i", False)
         # self.plot_on.acquire() # this locks the variable
         # self.plot_on.value = True # to change it
         # self.plot_on.release() # to unlock it
         self.start_time = None
 
     def start(self):
-        self.d_process = mp.Process(target=self.get_data, args=(self.plot_on, write_on))
+
+        self.get_baseline()
+        self.d_process = mp.Process(target=self.get_data, args=(self.write_on,))
         self.d_process.start()
 
     def shutdown(self):
-        pass
+        self.d_process.kill()
+        # self.p_process.kill()
 
     def serial_port_init(self, port, baudrate=500000):
         ser = serial.Serial(
@@ -52,6 +56,7 @@ class Application:
         self.serial = ser
 
     def get_baseline(self):
+        self.serial_port_init(self.port)
         index = 0
         i = 0
         count = 0
@@ -61,6 +66,7 @@ class Application:
         # record the first 100 points of the taxels as baseline
         while index < 100:
             line = self.serial.readline()
+            print(line)
             data = line.decode()
             word = data.split(",")
             len_word = len(word)
@@ -72,7 +78,7 @@ class Application:
                     index = index + 1
                 finally:
                     pass
-
+        self.serial.close()
         # add taxles together and get the average of the 100 taxels
         for i in range(self.channels):
             total = 0
@@ -104,7 +110,7 @@ class Application:
         data = np.zeros((8, 8))  # should be 10 x 10
         for i in range(7, -1, -1):
             for j in range(7, -1, -1):
-                data[j][i] = self.average[ind] - self.rawcount
+                data[j][i] = self.average[ind] - self.raw_count
                 index = index + 7
                 ind = ind + 1
 
@@ -119,13 +125,15 @@ class Application:
     def stop_plot(self):
         self.p_process.kill()
 
-    def get_data(self, write_on, plot_on):
+    def get_data(self, write_on):
+        self.serial_port_init(self.port)
         while True:  # this will not block other functions since it is on a different thread
             line = self.serial.readline()
-            raw_count = []
+            print(line)
             try:
                 data = line.decode()
                 word = data.split(",")
+                print(word)
                 index = 0
                 if len(word) >= self.channels + 1:  # discard faulty data
                     for index in range(self.channels):
@@ -141,10 +149,11 @@ class Application:
             finally:
                 pass
 
-            data_set = raw_count
+
+            data_set = self.raw_count
             self.start_time = time.time()
             data_set.insert(0, time.time() - self.start_time)
-
+            #print(raw_count)
             if write_on.value > 0:
                 with open(self.file, 'a', newline='') as csvfile:
                     writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL, delimiter=',')

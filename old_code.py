@@ -1,23 +1,23 @@
+from itertools import count
+# import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import serial
 import seaborn as sns
 import time
-import csv
 
 from threading import Thread
 from matplotlib.animation import FuncAnimation
+from matplotlib import cm
 
 # **********************Global variables begin***************************#
 # **********************USER DEFINED VALUES BEGIN******************#
-file_name = "matrix_prox_Ch65_1.csv"
-
 x_lim = 4  # number bar on the x axis
 y_lim = 15  # number of bar on the y axis
 z_lim = 50
 # limit of z axis from z_lim to -z_lim
 # Channels = x_lim*y_lim # number of channels
-Channels = 100
+Channels = 64
 stress_channels = 14
 shear_channels = 4
 
@@ -58,7 +58,7 @@ average = []
 
 # **********************Global variables end***************************#
 
-# open the serial port
+
 def serial_port_init():  # Serial port initializationst
     ser = serial.Serial(
         port='/dev/tty.usbmodem11103',
@@ -72,24 +72,19 @@ def serial_port_init():  # Serial port initializationst
     return ser
 
 
-# continue reading data from the serial port
 def thread1():
     global word, current_dz, U, y1, y2  # some how python want global variable to be defined in function
     while True:  # this will not block other functions since it is on a different thread
         line = ser.readline()
-        raw_count = []
         try:
             data = line.decode()
+            print(line)
             word = data.split(",")
             index = 0
             if len(word) >= Channels + 1:  # discard faulty data
                 for index in range(Channels):
                     try:
-                        # this is for just the observation
-                        raw_count.append(float(word[index]))
-
-                        # this is for getting the baseline - calculating the difference
-                        # dz[index] = ((average[index] - float(word[index]))/average[index])- calibrationArray[i]#- offset_z
+                        dz[index] = (average[index] - float(word[index]))  # /average[index]#- offset_z
                     except ValueError:
                         pass
                     finally:
@@ -99,32 +94,41 @@ def thread1():
         finally:
             pass
 
-        data_set = raw_count
-        data_set.insert(0, time.time() - start)
-        with open(file_name, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL, delimiter=',')
-            writer.writerow(data_set)
-
 
 def animate1(num):
     plt.cla()
     index = 1
     ind = 0
     current_dz = sorting(dz)
-    data = np.zeros((15, 4))  # should be 10 x 10
-    for i in range(3, -1, -1):
-        for j in range(14, -1, -1):
+    data = np.zeros((8, 8))
+    for i in range(7, -1, -1):
+        for j in range(7, -1, -1):
             data[j][i] = current_dz[ind]
-            index = index + 3
+            index = index + 7
             ind = ind + 1
 
-    # make the heat map
-    ax = sns.heatmap(data, vmin=0, vmax=1.5, cbar=False, cmap="YlOrBr", square=True)
+    ax = sns.heatmap(data, vmin=0, vmax=1000, cbar=False, cmap="YlOrBr", square=True)
     # Q.set_UVC(U, V)
     # ax.set_ylim(0,400)
 
 
 def sorting(unsorted_list):
+    scale_array = np.divide(np.ones(60) * 100, np.array([150, 220, 202, 101,
+                                                         206, 65, 100, 140,
+                                                         230.5, 20, 65, 155,
+                                                         143.7, 20, 45, 150,
+                                                         175, 30, 65, 160,  # 5
+                                                         245, 60, 82, 347,
+                                                         170, 100, 182, 151,
+                                                         158, 280, 400, 300,
+                                                         190, 115, 75, 54,
+                                                         150, 124, 175, 70,  # 10
+                                                         230, 210, 115, 30,
+                                                         163, 150, 22, 84,
+                                                         280, 83, 140, 42,
+                                                         92, 150, 70, 78,
+                                                         287, 360, 230, 53]))
+
     sorted_list = np.multiply(1, unsorted_list)
     '''
     for index in range (60):
@@ -139,11 +143,21 @@ if __name__ == "__main__":
     # Initialize serial port
     ser = serial_port_init()
     # Initialize settings for plotting
-    # Create a string including Channel name
-    channel_name = ['time']
-    for i in range(Channels):
-        name = 'Channel' + str(i)
-        channel_name.append(name)
+
+    a = -450 * np.ones(8)
+    b = -150 * np.ones(8)
+    c = 150 * np.ones(8)
+    d = 450 * np.ones(8)
+
+    e = np.concatenate((a, b, c, d))
+
+    e1 = np.linspace(-450, 450, num=8)
+    e1 = np.concatenate((e1, e1, e1, e1))
+
+    X = np.array(np.reshape(e, 32))
+    Y = np.array(np.reshape(e1, 32))
+    U = np.array(np.zeros(32))
+    V = np.array(np.zeros(32))
 
     # plt.ion()
     fig, ax = plt.subplots(1, 1)
@@ -162,7 +176,6 @@ if __name__ == "__main__":
     input_val = np.zeros((100, Channels))
     average = np.zeros(Channels)
 
-    # record the first 100 points of the taxels as baseline
     while index < 100:
         line = ser.readline()
         data = line.decode()
@@ -170,14 +183,10 @@ if __name__ == "__main__":
         len_word = len(word)
         count = count + 1
         if (len_word >= Channels):  # check value
-            try:
-                for i in range(Channels):
-                    input_val[index][i] = float(word[i])
-                index = index + 1
-            finally:
-                pass
+            for i in range(Channels):
+                input_val[index][i] = float(word[i])
+            index = index + 1
 
-    # add taxles together and get the average of the 100 taxels
     for i in range(Channels):
         total = 0
         for index in range(100):
@@ -185,14 +194,6 @@ if __name__ == "__main__":
             average_val = total / 100
             average[i] = average_val
 
-    # Create a CSV file for recording the data
-
-    start = time.time()
-    with open(file_name, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL, delimiter=',')
-        writer.writerow(channel_name)
-
-    # continue reading data from the serial
     thread = Thread(target=thread1)
     thread.start()
 

@@ -1,4 +1,5 @@
 import argparse
+import time
 
 from Application import Application
 
@@ -6,37 +7,46 @@ from Application import Application
 def main():
     args = get_args()
     app = Application(args.port, args.rows, args.cols)
+    app.file = "file.csv"
+    app.start()
+    time.sleep(2.4)
 
-    while True:
-        user_input = input('sensor command>>>')
+    app.write_to_csv()
+    time.sleep(2.4)
 
-        if user_input == 'start':
-            print("starting application")
-            app.start()
-        elif user_input == 'quit':
-            print('quitting')
-            app.shutdown()
-            break
-        elif user_input == 'plot':
-            print("plotting")
-            app.plot()
-        elif user_input == 'plot stop':
-            print("stopping plot")
-            app.stop_plot()
-        elif user_input == 'write':
-            print("writing to CSV")
-            app.write_to_csv()
-        elif user_input == 'stop write':
-            print("stopping write to csv")
-            app.stop_write_to_csv()
-        elif user_input.startswith("filename"):
-            words = user_input.split()
-            app.file = words[-1]
-        elif user_input.startswith("obs"):
-            words = user_input.split()
-            app.file = int(words[-1])
-        else:
-            print("invalid command")
+    # app.plot()
+    app.shutdown()
+
+    # while True:
+    #     user_input = input('sensor command>>>')
+    #
+    #     if user_input == 'start':
+    #         print("starting application")
+    #         app.start()
+    #     elif user_input == 'quit':
+    #         print('quitting')
+    #         app.shutdown()
+    #         break
+    #     elif user_input == 'plot':
+    #         print("plotting")
+    #         app.plot()
+    #     elif user_input == 'plot stop':
+    #         print("stopping plot")
+    #         app.stop_plot()
+    #     elif user_input == 'write':
+    #         print("writing to CSV")
+    #         app.write_to_csv()
+    #     elif user_input == 'stop write':
+    #         print("stopping write to csv")
+    #         app.stop_write_to_csv()
+    #     elif user_input.startswith("filename"):
+    #         words = user_input.split()
+    #         app.file = words[-1]
+    #     elif user_input.startswith("obs"):
+    #         words = user_input.split()
+    #         app.file = int(words[-1])
+    #     else:
+    #         print("invalid command")
 
 def get_args():
     argparser = argparse.ArgumentParser()
