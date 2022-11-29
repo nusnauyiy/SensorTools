@@ -61,7 +61,7 @@ average = []
 # open the serial port
 def serial_port_init():  # Serial port initializationst
     ser = serial.Serial(
-        port='COM5',
+        port='/dev/tty.usbmodem11103',
         baudrate=500000,
         timeout=None,
         parity=serial.PARITY_NONE,
@@ -198,4 +198,4 @@ if __name__ == "__main__":
 
     ani1 = FuncAnimation(plt.gcf(), animate1, interval=100, blit=False)
     # ani2 = FuncAnimation(plt.gcf(), animate2,interval=100, blit = False)
-    # plt.show()
+    plt.show()
