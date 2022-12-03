@@ -1,7 +1,7 @@
 import argparse
 import time
 
-from Application import Application
+from Application import Application, dataQueue, signalQueue
 
 
 def main():
@@ -10,9 +10,15 @@ def main():
     app.file = "file.csv"
     app.start()
     time.sleep(2.4)
-
-    app.write_to_csv()
+    # while True:
+    #     item = dataQueue.get(block=True)
+    #     print("FROM QUEUE")
+    #     print(item)
+    app.plot(dataQueue)
     time.sleep(2.4)
+    # app.plot_worker()
+    app.write_to_csv()
+    time.sleep(100)
 
     # app.plot()
     app.shutdown()

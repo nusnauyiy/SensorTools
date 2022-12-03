@@ -1,5 +1,7 @@
 import csv
+import queue
 import time
+from enum import Enum
 from threading import Thread
 from typing import Tuple
 
@@ -10,9 +12,14 @@ from matplotlib.animation import FuncAnimation
 import multiprocessing as mp
 import seaborn as sns
 
-write_on = mp.Value("i", 0)
+signalQueue = mp.Queue()
+dataQueue = mp.Queue()
+
+
+Signal = Enum('Signal', ['CSV_START', 'CSV_STOP', 'PLOT_START', 'PLOT_STOP'])
 
 class Application:
+
     def __init__(self, port: str, rows: int, cols: int):
         self.port = port
         self.p_process = None
@@ -21,22 +28,23 @@ class Application:
         self.sensor_size = (rows, cols)
         self.channels = rows * cols
         self.fig, self.ax = plt.subplots(1, 1)
+        data = np.zeros((1, 1))
+        self.ax = sns.heatmap(data, vmin=0, vmax=200, cbar=False, cmap="YlOrBr")
         self.average = None
         self.spectrum = None
-        self.raw_count = []
+        # self.raw_count = []
         self.file = None
         self.obs = 0
 
-        self.write_on = mp.Value("i", False)
         # self.plot_on.acquire() # this locks the variable
         # self.plot_on.value = True # to change it
         # self.plot_on.release() # to unlock it
         self.start_time = None
 
     def start(self):
-
         self.get_baseline()
-        self.d_process = mp.Process(target=self.get_data, args=(self.write_on,))
+        global signalQueue, dataQueue
+        self.d_process = mp.Process(target=self.get_data, args=(signalQueue, dataQueue))
         self.d_process.start()
 
     def shutdown(self):
@@ -66,7 +74,6 @@ class Application:
         # record the first 100 points of the taxels as baseline
         while index < 100:
             line = self.serial.readline()
-            print(line)
             data = line.decode()
             word = data.split(",")
             len_word = len(word)
@@ -88,9 +95,9 @@ class Application:
                 self.average[i] = average_val
         pass
 
-    def plot(self):
-        self.get_baseline()
-        self.p_process = mp.Process(target=self.plot_worker)
+    def plot(self, dataQueue):
+        self.p_process = mp.Process(target=self.plot_worker, args=(dataQueue,))
+
         self.p_process.start()
 
         # while True:
@@ -103,43 +110,58 @@ class Application:
         # self.p_process = Thread(target=self.plot_thread)
         # self.p_process.start()
 
-    def animate(self):
+    def animate(self, q):
+        try:
+            raw_count = q.get(block=False)
+        except queue.Empty:
+            return
         plt.cla()
-        index = 1
+        # index = 1
         ind = 0
-        data = np.zeros((8, 8))  # should be 10 x 10
-        for i in range(7, -1, -1):
-            for j in range(7, -1, -1):
-                data[j][i] = self.average[ind] - self.raw_count
-                index = index + 7
+        data = np.zeros(self.sensor_size)  # should be 10 x 10
+        row = self.sensor_size[0]
+        col = self.sensor_size[1]
+        for i in range(row - 1, -1, -1):
+            for j in range(col - 1, -1, -1):
+                data[j][i] = self.average[ind] - raw_count[ind]
+                # index = index + 7
                 ind = ind + 1
-
         # make the heat map
-        ax = sns.heatmap(data, vmin=0, vmax=1.5, cbar=False, cmap="YlOrBr", square=True)
+        self.ax = sns.heatmap(data, vmin=0, vmax=2000, cbar=False, cmap="YlOrBr", square=True)
 
-    def plot_worker(self):
-        ani1 = FuncAnimation(plt.gcf(), self.animate, interval=100, blit=False)
-        plt.show()
+    def plot_worker(self, q):
+        while True:
+            item = q.get(block=True)
+            print("FROM QUEUE")
+            print(item)
+        # ani1 = FuncAnimation(plt.gcf(), self.animate, fargs=(q,), interval=100, blit=False)
+        # plt.show()
         # make the heat map
 
     def stop_plot(self):
         self.p_process.kill()
 
-    def get_data(self, write_on):
+    def get_data(self, signalQ):
         self.serial_port_init(self.port)
+        write_on = False
+        dataQ = mp.Queue()
         while True:  # this will not block other functions since it is on a different thread
+            try:
+                item = signalQ.get(block=False)
+                write_on = True
+            except queue.Empty:
+                pass
             line = self.serial.readline()
-            print(line)
+            raw_count = []
             try:
                 data = line.decode()
                 word = data.split(",")
-                print(word)
                 index = 0
                 if len(word) >= self.channels + 1:  # discard faulty data
                     for index in range(self.channels):
                         try:
                             # this is for just the observation
-                            self.raw_count.append(float(word[index]))
+                            raw_count.append(float(word[index]))
                         except ValueError:
                             pass
                         finally:
@@ -149,12 +171,13 @@ class Application:
             finally:
                 pass
 
-
-            data_set = self.raw_count
+            dataQ.put(raw_count)
+            data_set = raw_count
             self.start_time = time.time()
             data_set.insert(0, time.time() - self.start_time)
-            #print(raw_count)
-            if write_on.value > 0:
+            # print(raw_count)
+
+            if write_on:
                 with open(self.file, 'a', newline='') as csvfile:
                     writer = csv.writer(csvfile, quoting=csv.QUOTE_ALL, delimiter=',')
                     writer.writerow(data_set)
@@ -178,13 +201,10 @@ class Application:
             writer.writerow(channel_name)
 
         self.start_time = time.time()
-        write_on.acquire()
-        write_on.value = 1
-        write_on.release()
+        signalQueue.put(True)
         # self.d_process = Thread(target=self.get_data, args=(start_time, j))
         # self.d_process.start()
 
     def stop_write_to_csv(self):
-        write_on.acquire()
-        write_on.value = 0
-        write_on.release()
+        global write_on
+        write_on = False
