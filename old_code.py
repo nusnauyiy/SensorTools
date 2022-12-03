@@ -78,7 +78,6 @@ def thread1():
         line = ser.readline()
         try:
             data = line.decode()
-            print(line)
             word = data.split(",")
             index = 0
             if len(word) >= Channels + 1:  # discard faulty data
@@ -200,3 +199,4 @@ if __name__ == "__main__":
     ani1 = FuncAnimation(plt.gcf(), animate1, interval=100, blit=False)
     # ani2 = FuncAnimation(plt.gcf(), animate2,interval=100, blit = False)
     plt.show()
+    print("plotted?")

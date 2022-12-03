@@ -15,8 +15,11 @@ import seaborn as sns
 signalQueue = mp.Queue()
 dataQueue = mp.Queue()
 
-
-Signal = Enum('Signal', ['CSV_START', 'CSV_STOP', 'PLOT_START', 'PLOT_STOP'])
+class Signal(Enum):
+    CSV_START = 1
+    CSV_STOP = 2
+    PLOT_START = 3
+    PLOT_STOP = 4
 
 class Application:
 
@@ -43,8 +46,8 @@ class Application:
 
     def start(self):
         self.get_baseline()
-        global signalQueue, dataQueue
-        self.d_process = mp.Process(target=self.get_data, args=(signalQueue, dataQueue))
+        global signalQueue
+        self.d_process = mp.Process(target=self.get_data, args=(signalQueue,))
         self.d_process.start()
 
     def shutdown(self):
@@ -110,17 +113,19 @@ class Application:
         # self.p_process = Thread(target=self.plot_thread)
         # self.p_process.start()
 
-    def animate(self, q):
-        try:
-            raw_count = q.get(block=False)
-        except queue.Empty:
-            return
-        plt.cla()
+    def animate(self, num, q):
+        raw_count = q.get()
+        # if len(raw_count) != self.channels + 1:
+        #     pass
         # index = 1
         ind = 0
         data = np.zeros(self.sensor_size)  # should be 10 x 10
         row = self.sensor_size[0]
         col = self.sensor_size[1]
+
+        print("FROM ANIMATE")
+        # print(self.average)
+        print(raw_count)
         for i in range(row - 1, -1, -1):
             for j in range(col - 1, -1, -1):
                 data[j][i] = self.average[ind] - raw_count[ind]
@@ -130,12 +135,14 @@ class Application:
         self.ax = sns.heatmap(data, vmin=0, vmax=2000, cbar=False, cmap="YlOrBr", square=True)
 
     def plot_worker(self, q):
+        # while True:
+        #     item = q.get(block=True)
+        #     print("FROM QUEUE")
+        #     print(item)
         while True:
-            item = q.get(block=True)
-            print("FROM QUEUE")
-            print(item)
-        # ani1 = FuncAnimation(plt.gcf(), self.animate, fargs=(q,), interval=100, blit=False)
-        # plt.show()
+            ani1 = FuncAnimation(plt.gcf(), self.animate, fargs=(q,), interval=1, blit=False)
+            plt.show()
+            print("plotted?")
         # make the heat map
 
     def stop_plot(self):
@@ -144,11 +151,21 @@ class Application:
     def get_data(self, signalQ):
         self.serial_port_init(self.port)
         write_on = False
+        plot_on = False
         dataQ = mp.Queue()
+        self.plot(dataQ)
         while True:  # this will not block other functions since it is on a different thread
             try:
                 item = signalQ.get(block=False)
-                write_on = True
+                match item:
+                    case Signal.CSV_START:
+                        write_on = True
+                    case Signal.CSV_STOP:
+                        write_on = False
+                    case Signal.PLOT_START:
+                        plot_on = True
+                    case Signal.PLOT_STOP:
+                        plot_on = False
             except queue.Empty:
                 pass
             line = self.serial.readline()
@@ -171,7 +188,8 @@ class Application:
             finally:
                 pass
 
-            dataQ.put(raw_count)
+            if len(raw_count) == self.channels:
+                dataQ.put(raw_count)
             data_set = raw_count
             self.start_time = time.time()
             data_set.insert(0, time.time() - self.start_time)
@@ -201,7 +219,7 @@ class Application:
             writer.writerow(channel_name)
 
         self.start_time = time.time()
-        signalQueue.put(True)
+        signalQueue.put(Signal.CSV_START)
         # self.d_process = Thread(target=self.get_data, args=(start_time, j))
         # self.d_process.start()
 

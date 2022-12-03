@@ -9,16 +9,15 @@ def main():
     app = Application(args.port, args.rows, args.cols)
     app.file = "file.csv"
     app.start()
-    time.sleep(2.4)
+    time.sleep(0.5)
+    app.write_to_csv()
     # while True:
     #     item = dataQueue.get(block=True)
     #     print("FROM QUEUE")
     #     print(item)
-    app.plot(dataQueue)
-    time.sleep(2.4)
+    # app.plot(dataQueue)
+    time.sleep(2)
     # app.plot_worker()
-    app.write_to_csv()
-    time.sleep(100)
 
     # app.plot()
     app.shutdown()
